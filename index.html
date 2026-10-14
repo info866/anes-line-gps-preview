@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="light">
+<title>Anes 勤怠GPSテスト（保存なし）</title>
+<style>
+:root{--bg:#f4f6f8;--ink:#1f2933;--muted:#637083;--brand:#2b3a4a;--green:#06c755;--blue:#1e88e5;--red:#dc3545;}
+*{box-sizing:border-box}html,body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.55 -apple-system,BlinkMacSystemFont,"Hiragino Sans","Noto Sans JP",sans-serif;}
+main{width:min(100%,530px);margin:auto;padding:16px 14px max(32px,env(safe-area-inset-bottom));}
+header{background:var(--brand);color:#fff;padding:16px;border-radius:14px;display:flex;justify-content:space-between;gap:10px;align-items:center;}
+h1{font-size:19px;margin:0}small{font-size:12px}
+.tag{background:#fff3d3;color:#714b00;border-radius:100px;padding:4px 10px;font-size:12px;font-weight:800;white-space:nowrap}
+.notice{padding:12px;margin:14px 0;background:#fff8e7;border-left:4px solid #eca51a;border-radius:8px;font-size:13px}
+.card{background:#fff;border-radius:14px;padding:18px;margin:12px 0;box-shadow:0 1px 4px #1f293316;}
+h2{font-size:14px;margin:0 0 6px;color:var(--muted);font-weight:600}
+.time{font-size:36px;font-variant-numeric:tabular-nums;font-weight:800;letter-spacing:.04em;text-align:center;margin:0 0 10px}
+.status{border-radius:10px;padding:12px;background:#edf1f5;display:flex;gap:10px;align-items:center;font-size:14px;}
+.status.ok{background:#e4f8ea;color:#075f31}.status.err{background:#fde9e9;color:#862a2a}
+.dot{height:11px;width:11px;min-width:11px;border-radius:50%;background:#f2a51b}.status.ok .dot{background:var(--green)}.status.err .dot{background:var(--red)}
+.button{display:block;border:0;background:var(--green);color:white;border-radius:12px;width:100%;font-size:24px;font-weight:800;padding:22px 16px;cursor:pointer;margin-top:16px}
+.button:disabled{background:#bdc6cf;cursor:not-allowed}
+.sub{font-size:13px;color:var(--muted);margin:10px 0 0;text-align:center}
+.result{border:1px solid #b8dbca;background:#e9f8ef;border-radius:12px;padding:14px;margin-top:16px;font-weight:700;white-space:pre-line;display:none}
+.remeasure{background:#e9edf3;border:0;border-radius:10px;padding:12px 16px;width:100%;font-size:15px;color:var(--ink);margin-top:12px;cursor:pointer}
+footer{margin-top:20px;font-size:12px;color:var(--muted);text-align:center}
+</style>
+</head>
+<body>
+<main>
+<header><h1>Anes 勤怠管理</h1><span class="tag">試験用・保存なし</span></header>
+<div class="notice" role="note">GPS取得と画面の反応を確認するテストです。<strong>実際の出勤・退勤や給与には一切反映されません。</strong></div>
+<section class="card">
+<h2>現在時刻（端末表示）</h2>
+<p id="clock" class="time" aria-live="off">--:--</p>
+<div class="status" id="gpsStatus" role="status" aria-live="polite">
+<span class="dot"></span><span id="statusText">GPSの位置情報を確認しています…</span>
+</div>
+<div class="sub" id="measurement">測位時間：計測中</div>
+<button id="testButton" class="button" disabled>GPS取得待ち</button>
+<p class="sub">従業員の位置・時刻を手入力・変更する機能はありません。</p>
+<div id="result" class="result" role="status" aria-live="polite"></div>
+<button class="remeasure" type="button" id="retry">位置情報を再取得</button>
+</section>
+<footer>位置情報はこの画面内の判定にのみ使い、保存・送信しません。<br>LINEテスト用／本番勤怠とは完全に独立</footer>
+</main>
+<script>
+(()=>{
+"use strict";
+const MAX_ACCURACY_METERS=100;
+const MAX_AGE_MS=30000;
+let watchId=null,startedAt=0,enabled=false,finished=false;
+const el=id=>document.getElementById(id);
+function clock(){
+ const d=new Date();
+ el("clock").textContent=String(d.getHours()).padStart(2,"0")+":"+String(d.getMinutes()).padStart(2,"0");
+}
+clock();setInterval(clock,1000);
+function status(text,kind){
+ el("statusText").textContent=text;
+ el("gpsStatus").className="status"+(kind?" "+kind:"");
+}
+function stop(){
+ if(watchId!==null){navigator.geolocation.clearWatch(watchId);watchId=null;}
+}
+function begin(){
+ stop();enabled=false;finished=false;startedAt=performance.now();
+ el("result").style.display="none";
+ el("testButton").disabled=true;
+ el("testButton").textContent="GPS取得待ち";
+ el("measurement").textContent="測位時間：計測中";
+ status("GPSの位置情報を確認しています…","");
+ if(!navigator.geolocation){status("この端末は位置情報に対応していません。","err");return;}
+ watchId=navigator.geolocation.watchPosition(pos=>{
+  if(finished)return;
+  const accuracy=Number(pos.coords.accuracy);
+  const stamp=Number(pos.timestamp);
+  const age=Date.now()-stamp;
+  if(!Number.isFinite(accuracy)||accuracy<=0||accuracy>MAX_ACCURACY_METERS||
+     !Number.isFinite(stamp)||age<0||age>MAX_AGE_MS){
+   status("GPSの精度を改善しています。少しお待ちください。","");
+   return;
+  }
+  const seconds=((performance.now()-startedAt)/1000).toFixed(2);
+  enabled=true;
+  el("measurement").textContent="測位完了まで "+seconds+" 秒 ／ 精度 ±"+Math.round(accuracy)+"m";
+  status("GPS取得完了（精度 ±"+Math.round(accuracy)+"m）","ok");
+  el("testButton").disabled=false;
+  el("testButton").textContent="画面応答をテスト";
+  stop();
+ },error=>{
+  if(finished||enabled)return;
+  const txt=error.code===1?"位置情報を許可してください。端末の設定を確認してください。":
+           error.code===3?"位置情報の取得に時間がかかっています。再取得をお試しください。":
+           "位置情報を取得できませんでした。再取得をお試しください。";
+  status(txt,"err");stop();
+ },{enableHighAccuracy:true,maximumAge:0,timeout:20000});
+}
+el("testButton").addEventListener("click",()=>{
+ if(!enabled||finished)return;
+ finished=true;enabled=false;
+ el("testButton").disabled=true;el("testButton").textContent="テスト済み";
+ const out=el("result");
+ out.textContent="GPS・画面操作テスト完了\n打刻データは保存していません。\n管理者通知も送信していません。";
+ out.style.display="block";
+});
+el("retry").addEventListener("click",begin);
+window.addEventListener("pagehide",stop);
+begin();
+})();
+</script>
+</body>
+</html>
