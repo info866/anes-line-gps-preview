@@ -53,6 +53,11 @@ footer{margin-top:20px;font-size:12px;color:var(--muted);text-align:center}
 const DEVELOPING_LIFF_ID="2008362128-eLVYdGQd";
 function initializeLineMiniAppIfConfigured(){
  const label=el("miniappStatus");
+ // A rich-menu HTTPS fallback must not invoke Developing LIFF auth for non-Testers.
+ if(new URLSearchParams(window.location.search).get("mode")==="standalone"){
+  label.textContent="LINEからのGPS単体テスト（保存なし・LIFF認証不要）";
+  return;
+ }
  if(!DEVELOPING_LIFF_ID){label.textContent="LINEミニアプリ接続：未設定（単体GPSテスト）";return;}
  const sdk=document.createElement("script");
  sdk.src="https://static.line-scdn.net/liff/edge/2/sdk.js";
